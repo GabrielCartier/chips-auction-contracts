@@ -1,0 +1,11 @@
+{
+  "solidity.packageDefaultDependenciesDirectory": "dependencies",
+  "editor.formatOnSave": true,
+  "[solidity]": {
+    "editor.defaultFormatter": "JuanBlanco.solidity" 
+  },
+  "solidity.formatter": "forge",
+  "solidity.compileUsingRemoteVersion": "v0.8.23",
+  "prettier.configPath": "./prettier.config.js"
+}
+                                      

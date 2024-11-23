@@ -1,0 +1,23 @@
+# Compiler files
+cache/
+out/
+
+# Ignores development broadcast logs
+!/broadcast
+/broadcast/*/1328/
+/broadcast/**/dry-run/
+
+# Dotenv file
+.env
+
+## Tests
+/coverage
+lcov.info
+.gas-snapshot
+
+
+*.DS_Store
+node_modules/
+
+# Soldeer
+/dependencies
