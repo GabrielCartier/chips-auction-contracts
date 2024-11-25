@@ -27,6 +27,17 @@ contract ChipsAuction is Ownable {
         bool withdrawn;
     }
 
+    // Add this struct for frontend-friendly auction data
+    struct AuctionView {
+        uint256 auctionId;
+        uint256 startTime;
+        uint256 endTime;
+        uint256 startingPrice;
+        uint256 highestBid;
+        address highestBidder;
+        bool withdrawn;
+    }
+
     // Constants
     IERC20Metadata public immutable TOKEN;
     uint256 public immutable MIN_BID_INCREMENT;
@@ -57,12 +68,16 @@ contract ChipsAuction is Ownable {
      * @param endTime The timestamp when the auction ends
      * @param startingPrice The minimum bid to start the auction
      */
-    function createAuction(uint256 startTime, uint256 endTime, uint256 startingPrice) external onlyOwner {
+    function createAuction(uint256 startTime, uint256 endTime, uint256 startingPrice)
+        external
+        onlyOwner
+        returns (uint256 newAuctionId)
+    {
         if (startTime >= endTime || startTime < block.timestamp) {
             revert InvalidAuctionTiming();
         }
 
-        uint256 newAuctionId = currentAuctionId + 1;
+        newAuctionId = currentAuctionId + 1;
 
         auctions[newAuctionId] = Auction({
             startTime: startTime,
@@ -145,48 +160,48 @@ contract ChipsAuction is Ownable {
 
     /**
      * @notice Get the current active auction if any exists
-     * @return auctionId The ID of the current auction (0 if none)
-     * @return startTime The start time of the current auction
-     * @return endTime The end time of the current auction
-     * @return currentPrice The current highest bid
-     * @return isActive Whether the auction is currently active
+     * @return currentAuction The current active auction (returns empty struct if none exists)
      */
-    function getCurrentAuction()
-        external
-        view
-        returns (uint256 auctionId, uint256 startTime, uint256 endTime, uint256 currentPrice, bool isActive)
-    {
+    function getCurrentAuction() external view returns (AuctionView memory currentAuction) {
         // Check all auctions from most recent to oldest
         for (uint256 i = currentAuctionId; i > 0; i--) {
             Auction memory auction = auctions[i];
             if (auction.exists && block.timestamp >= auction.startTime && block.timestamp < auction.endTime) {
-                return (i, auction.startTime, auction.endTime, auction.highestBid, true);
+                return AuctionView({
+                    auctionId: i,
+                    startTime: auction.startTime,
+                    endTime: auction.endTime,
+                    startingPrice: auction.startingPrice,
+                    highestBid: auction.highestBid,
+                    highestBidder: auction.highestBidder,
+                    withdrawn: auction.withdrawn
+                });
             }
         }
-        return (0, 0, 0, 0, false);
+        return AuctionView(0, 0, 0, 0, 0, address(0), false);
     }
 
     /**
      * @notice Get the next scheduled auction if any exists
-     * @return auctionId The ID of the next auction (0 if none)
-     * @return startTime The start time of the next auction
-     * @return endTime The end time of the next auction
-     * @return startingPrice The starting price of the next auction
-     * @return exists Whether a future auction exists
+     * @return nextAuction The next scheduled auction (returns empty struct if none exists)
      */
-    function getNextAuction()
-        external
-        view
-        returns (uint256 auctionId, uint256 startTime, uint256 endTime, uint256 startingPrice, bool exists)
-    {
+    function getNextAuction() external view returns (AuctionView memory nextAuction) {
         // Check all auctions from most recent to oldest
         for (uint256 i = currentAuctionId; i > 0; i--) {
             Auction memory auction = auctions[i];
             if (auction.exists && block.timestamp < auction.startTime) {
-                return (i, auction.startTime, auction.endTime, auction.startingPrice, true);
+                return AuctionView({
+                    auctionId: i,
+                    startTime: auction.startTime,
+                    endTime: auction.endTime,
+                    startingPrice: auction.startingPrice,
+                    highestBid: auction.highestBid,
+                    highestBidder: auction.highestBidder,
+                    withdrawn: auction.withdrawn
+                });
             }
         }
-        return (0, 0, 0, 0, false);
+        return AuctionView(0, 0, 0, 0, 0, address(0), false);
     }
 
     /**
@@ -226,21 +241,9 @@ contract ChipsAuction is Ownable {
 
     /**
      * @notice Get all past auctions
-     * @return pastAuctionIds Array of past auction IDs
-     * @return winningBids Array of winning bid amounts
-     * @return winners Array of winning bidders
-     * @return withdrawalStates Array of withdrawal states
+     * @return pastAuctions Array of past auctions
      */
-    function getPastAuctions()
-        external
-        view
-        returns (
-            uint256[] memory pastAuctionIds,
-            uint256[] memory winningBids,
-            address[] memory winners,
-            bool[] memory withdrawalStates
-        )
-    {
+    function getPastAuctions() external view returns (AuctionView[] memory pastAuctions) {
         // First, count the number of past auctions
         uint256 count = 0;
         for (uint256 i = 1; i <= currentAuctionId; i++) {
@@ -250,25 +253,65 @@ contract ChipsAuction is Ownable {
             }
         }
 
-        // Initialize arrays with the correct size
-        pastAuctionIds = new uint256[](count);
-        winningBids = new uint256[](count);
-        winners = new address[](count);
-        withdrawalStates = new bool[](count);
+        // Initialize array with the correct size
+        pastAuctions = new AuctionView[](count);
 
-        // Fill arrays with past auction data
+        // Fill array with past auction data
         uint256 index = 0;
         for (uint256 i = 1; i <= currentAuctionId; i++) {
             Auction memory auction = auctions[i];
             if (auction.exists && block.timestamp >= auction.endTime) {
-                pastAuctionIds[index] = i;
-                winningBids[index] = auction.highestBid;
-                winners[index] = auction.highestBidder;
-                withdrawalStates[index] = auction.withdrawn;
+                pastAuctions[index] = AuctionView({
+                    auctionId: i,
+                    startTime: auction.startTime,
+                    endTime: auction.endTime,
+                    startingPrice: auction.startingPrice,
+                    highestBid: auction.highestBid,
+                    highestBidder: auction.highestBidder,
+                    withdrawn: auction.withdrawn
+                });
                 index++;
             }
         }
 
-        return (pastAuctionIds, winningBids, winners, withdrawalStates);
+        return pastAuctions;
+    }
+
+    /**
+     * @notice Get all upcoming auctions (excluding current active auction)
+     * @return upcomingAuctions Array of upcoming auctions
+     */
+    function getUpcomingAuctions() external view returns (AuctionView[] memory upcomingAuctions) {
+        // First, count the number of upcoming auctions
+        uint256 count = 0;
+        for (uint256 i = 1; i <= currentAuctionId; i++) {
+            Auction memory auction = auctions[i];
+            if (auction.exists && block.timestamp < auction.startTime) {
+                count++;
+            }
+        }
+
+        // Initialize array with the correct size
+        upcomingAuctions = new AuctionView[](count);
+
+        // Fill array with upcoming auction data
+        uint256 index = 0;
+        for (uint256 i = 1; i <= currentAuctionId; i++) {
+            Auction memory auction = auctions[i];
+            if (auction.exists && block.timestamp < auction.startTime) {
+                upcomingAuctions[index] = AuctionView({
+                    auctionId: i,
+                    startTime: auction.startTime,
+                    endTime: auction.endTime,
+                    startingPrice: auction.startingPrice,
+                    highestBid: auction.highestBid,
+                    highestBidder: auction.highestBidder,
+                    withdrawn: auction.withdrawn
+                });
+                index++;
+            }
+        }
+
+        return upcomingAuctions;
     }
 }
