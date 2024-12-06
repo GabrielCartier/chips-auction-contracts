@@ -15,6 +15,7 @@ contract ChipsAuction is Ownable {
     error InvalidAuctionTiming();
     error AuctionAlreadyExists();
     error AuctionStillActive();
+    error InvalidBidIncrement();
 
     // Structs
     struct Auction {
@@ -40,10 +41,10 @@ contract ChipsAuction is Ownable {
 
     // Constants
     IERC20Metadata public immutable TOKEN;
-    uint256 public immutable MIN_BID_INCREMENT;
     uint256 private immutable TOKEN_DECIMALS;
 
     // State variables
+        uint256 public minBidIncrement;
     uint256 public currentAuctionId;
     mapping(uint256 => Auction) public auctions;
 
@@ -53,13 +54,13 @@ contract ChipsAuction is Ownable {
     event AuctionCreated(uint256 indexed auctionId, uint256 startTime, uint256 endTime, uint256 startingPrice);
     event AuctionRemoved(uint256 indexed auctionId);
     event FundsWithdrawn(uint256[] auctionIds, uint256 totalAmount);
+    event BidIncrementUpdated(uint256 oldIncrement, uint256 newIncrement);
 
     constructor() {
         _initializeOwner(msg.sender);
         TOKEN = IERC20Metadata(0xBd82f3bfE1dF0c84faEC88a22EbC34C9A86595dc);
-        // Get token decimals - most tokens implement this optional function
         TOKEN_DECIMALS = TOKEN.decimals();
-        MIN_BID_INCREMENT = 10_000 * 10 ** TOKEN_DECIMALS;
+        minBidIncrement = 1000 * 10 ** TOKEN_DECIMALS;
     }
 
     /**
@@ -131,8 +132,8 @@ contract ChipsAuction is Ownable {
                 revert BidTooLow();
             }
         } else {
-            // Subsequent bids must be at least MIN_BID_INCREMENT more than current highest bid
-            if (amount <= auction.highestBid + MIN_BID_INCREMENT) {
+            // Subsequent bids must be at least minBidIncrement more than current highest bid
+            if (amount <= auction.highestBid + minBidIncrement) {
                 revert BidTooLow();
             }
         }
@@ -313,5 +314,18 @@ contract ChipsAuction is Ownable {
         }
 
         return upcomingAuctions;
+    }
+
+    /**
+     * @notice Update the minimum bid increment
+     * @param newIncrement The new minimum bid increment (will be multiplied by token decimals)
+     */
+    function updateMinBidIncrement(uint256 newIncrement) external onlyOwner {
+        if (newIncrement == 0) {
+            revert InvalidBidIncrement();
+        }
+        uint256 oldIncrement = minBidIncrement;
+        minBidIncrement = newIncrement * 10 ** TOKEN_DECIMALS;
+        emit BidIncrementUpdated(oldIncrement, minBidIncrement);
     }
 }
