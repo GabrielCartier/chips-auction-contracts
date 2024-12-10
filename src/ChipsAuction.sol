@@ -133,7 +133,7 @@ contract ChipsAuction is Ownable {
             }
         } else {
             // Subsequent bids must be at least minBidIncrement more than current highest bid
-            if (amount <= auction.highestBid + minBidIncrement) {
+            if (amount < auction.highestBid + minBidIncrement) {
                 revert BidTooLow();
             }
         }
