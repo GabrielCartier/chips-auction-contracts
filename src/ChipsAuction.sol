@@ -2,12 +2,10 @@
 pragma solidity ^0.8.23;
 
 import {Ownable} from "solady/src/auth/Ownable.sol";
-import {IERC20Metadata} from "@openzeppelin-contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 contract ChipsAuction is Ownable {
     // Custom errors
     error BidTooLow();
-    error TokenTransferFailed();
     error RefundFailed();
     error NoActiveAuction();
     error AuctionNotStarted();
@@ -39,12 +37,8 @@ contract ChipsAuction is Ownable {
         bool withdrawn;
     }
 
-    // Constants
-    IERC20Metadata public immutable TOKEN;
-    uint256 private immutable TOKEN_DECIMALS;
-
     // State variables
-        uint256 public minBidIncrement;
+    uint256 public minBidIncrement;
     uint256 public currentAuctionId;
     mapping(uint256 => Auction) public auctions;
 
@@ -58,9 +52,7 @@ contract ChipsAuction is Ownable {
 
     constructor() {
         _initializeOwner(msg.sender);
-        TOKEN = IERC20Metadata(0xBd82f3bfE1dF0c84faEC88a22EbC34C9A86595dc);
-        TOKEN_DECIMALS = TOKEN.decimals();
-        minBidIncrement = 1000 * 10 ** TOKEN_DECIMALS;
+        minBidIncrement = 0.1 ether; // 0.1 SEI
     }
 
     /**
@@ -110,9 +102,8 @@ contract ChipsAuction is Ownable {
     /**
      * @notice Place a bid in the current auction
      * @param auctionId The ID of the auction to bid on
-     * @param amount The amount to bid
      */
-    function placeBid(uint256 auctionId, uint256 amount) external {
+    function placeBid(uint256 auctionId) external payable {
         Auction storage auction = auctions[auctionId];
 
         if (!auction.exists) {
@@ -128,35 +119,31 @@ contract ChipsAuction is Ownable {
         // Check if this is the first bid or a subsequent bid
         if (auction.highestBidder == address(0)) {
             // First bid must be at least the starting price
-            if (amount < auction.startingPrice) {
+            if (msg.value < auction.startingPrice) {
                 revert BidTooLow();
             }
         } else {
             // Subsequent bids must be at least minBidIncrement more than current highest bid
-            if (amount < auction.highestBid + minBidIncrement) {
+            if (msg.value <= auction.highestBid + minBidIncrement) {
                 revert BidTooLow();
             }
-        }
-
-        // Transfer tokens from bidder to contract
-        if (!TOKEN.transferFrom(msg.sender, address(this), amount)) {
-            revert TokenTransferFailed();
         }
 
         // If there was a previous bid, refund it immediately
         if (auction.highestBidder != address(0)) {
             uint256 previousBid = auction.highestBid;
-            if (!TOKEN.transfer(auction.highestBidder, previousBid)) {
+            (bool success,) = auction.highestBidder.call{value: previousBid}("");
+            if (!success) {
                 revert RefundFailed();
             }
             emit BidRefunded(auctionId, auction.highestBidder, previousBid);
         }
 
         // Update auction state
-        auction.highestBid = amount;
+        auction.highestBid = msg.value;
         auction.highestBidder = msg.sender;
 
-        emit BidPlaced(auctionId, msg.sender, amount);
+        emit BidPlaced(auctionId, msg.sender, msg.value);
     }
 
     /**
@@ -233,8 +220,9 @@ contract ChipsAuction is Ownable {
 
         // Only transfer if there are funds to withdraw
         if (totalAmount > 0) {
-            if (!TOKEN.transfer(owner(), totalAmount)) {
-                revert TokenTransferFailed();
+            (bool success,) = owner().call{value: totalAmount}("");
+            if (!success) {
+                revert RefundFailed();
             }
             emit FundsWithdrawn(auctionIds, totalAmount);
         }
@@ -318,14 +306,17 @@ contract ChipsAuction is Ownable {
 
     /**
      * @notice Update the minimum bid increment
-     * @param newIncrement The new minimum bid increment (will be multiplied by token decimals)
+     * @param newIncrement The new minimum bid increment in SEI
      */
     function updateMinBidIncrement(uint256 newIncrement) external onlyOwner {
         if (newIncrement == 0) {
             revert InvalidBidIncrement();
         }
         uint256 oldIncrement = minBidIncrement;
-        minBidIncrement = newIncrement * 10 ** TOKEN_DECIMALS;
+        minBidIncrement = newIncrement * 1 ether; // Convert to SEI
         emit BidIncrementUpdated(oldIncrement, minBidIncrement);
     }
+
+    // Add receive function to accept SEI
+    receive() external payable {}
 }
